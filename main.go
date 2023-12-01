@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"net/url"
     "os"
-	"path/filepath"
+    "path"
 	"strconv"
 	"time"
 )
@@ -29,23 +29,16 @@ func anyToString(value interface{}) string {
 	}
 }
 
-func addFileToFormDataWriter(writer *multipart.Writer, field string, filePath string) error {
-	file, err := os.Open(filePath)
+func addFileToFormDataWriter(writer *multipart.Writer, field string, file os.File) error {
+	part, err := writer.CreateFormFile(field, path.Base(file.Name()))
 	if err != nil {
 		return err
 	}
 
-	part, err := writer.CreateFormFile(field, filepath.Base(file.Name()))
+	_, err = io.Copy(part, &file)
 	if err != nil {
 		return err
 	}
-
-	_, err = io.Copy(part, file)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("copied %v", part)
 
 	return nil
 }
@@ -107,19 +100,31 @@ func errorForStatus(request http.Request, response http.Response) error {
 type Client struct {
 	httpClient *http.Client
 	baseUrl    string
-	username   string
-	password   string
-    token      string
-    apiKey     string
+	auth       map[string]func(*http.Request)
 }
 
 // Instantiate a new API client
-func NewClient() *Client {
+func NewClient(auth ...func(*Client)) *Client {
     baseUrl := `https://hacker-news.firebaseio.com/v0`
-    httpClient := http.Client{Timeout: time.Duration(3) * time.Second}
+    httpClient := http.Client{Timeout: time.Duration(10) * time.Second}
+    
+    client := Client{httpClient: &httpClient, baseUrl: baseUrl, auth: map[string]func(*http.Request){}}
+    for _, a := range auth {
+		a(&client)
+	}
+    
+    return &client
+}
 
-    client := Client{httpClient: &httpClient, baseUrl: baseUrl}
-	return &client
+
+func (c *Client) addAuth(authNames []string, request *http.Request) {
+	for _, authName := range authNames {
+		provider, exists := c.auth[authName]
+		if !exists {
+			continue
+		}
+		provider(request)
+	}
 }
 
 // Updates base url of API client
@@ -130,11 +135,6 @@ func (c *Client) SetBaseUrl(url string) {
 // Returns base url of API client
 func (c *Client) BaseUrl() string {
 	return c.baseUrl
-}
-
-// Updates token of API client
-func (c *Client) SetToken(token string) {
-	c.token = token
 }
 
 // Sets request timeout of client
@@ -161,7 +161,7 @@ func (c *Client) GetAskStoryIds(request GetAskstoriesJsonRequest) ([]int, error)
 
     queryParams := targetUrl.Query()
     if request.Print != nil {
-        queryParams.Set("print", anyToString(*request.Print))
+        queryParams.Add("print", anyToString(*request.Print))
     }
     targetUrl.RawQuery = queryParams.Encode()
 
@@ -174,7 +174,10 @@ func (c *Client) GetAskStoryIds(request GetAskstoriesJsonRequest) ([]int, error)
     if err != nil {
         return []int{}, err
     }
-
+    c.addAuth(
+        []string{  },
+        req,
+    )
 
 
     resp, err := c.httpClient.Do(req)
@@ -213,7 +216,7 @@ func (c *Client) GetBestStoryIds(request GetBeststoriesJsonRequest) ([]int, erro
 
     queryParams := targetUrl.Query()
     if request.Print != nil {
-        queryParams.Set("print", anyToString(*request.Print))
+        queryParams.Add("print", anyToString(*request.Print))
     }
     targetUrl.RawQuery = queryParams.Encode()
 
@@ -226,7 +229,10 @@ func (c *Client) GetBestStoryIds(request GetBeststoriesJsonRequest) ([]int, erro
     if err != nil {
         return []int{}, err
     }
-
+    c.addAuth(
+        []string{  },
+        req,
+    )
 
 
     resp, err := c.httpClient.Do(req)
@@ -253,7 +259,7 @@ func (c *Client) GetBestStoryIds(request GetBeststoriesJsonRequest) ([]int, erro
     return castedBody, nil
 }
 func (c *Client) GetItem(request GetItemIdJsonRequest) (Item, error) {
-    rawUrl, err := url.JoinPath(c.baseUrl, "/item/"+anyToString(request.ID)+".json")
+    rawUrl, err := url.JoinPath(c.baseUrl, "/item/"+anyToString(request.Id)+".json")
     if err != nil {
         return Item{}, err
     }
@@ -265,7 +271,7 @@ func (c *Client) GetItem(request GetItemIdJsonRequest) (Item, error) {
 
     queryParams := targetUrl.Query()
     if request.Print != nil {
-        queryParams.Set("print", anyToString(*request.Print))
+        queryParams.Add("print", anyToString(*request.Print))
     }
     targetUrl.RawQuery = queryParams.Encode()
 
@@ -278,7 +284,10 @@ func (c *Client) GetItem(request GetItemIdJsonRequest) (Item, error) {
     if err != nil {
         return Item{}, err
     }
-
+    c.addAuth(
+        []string{  },
+        req,
+    )
 
 
     resp, err := c.httpClient.Do(req)
@@ -317,7 +326,7 @@ func (c *Client) GetJobStoryIds(request GetJobstoriesJsonRequest) ([]int, error)
 
     queryParams := targetUrl.Query()
     if request.Print != nil {
-        queryParams.Set("print", anyToString(*request.Print))
+        queryParams.Add("print", anyToString(*request.Print))
     }
     targetUrl.RawQuery = queryParams.Encode()
 
@@ -330,7 +339,10 @@ func (c *Client) GetJobStoryIds(request GetJobstoriesJsonRequest) ([]int, error)
     if err != nil {
         return []int{}, err
     }
-
+    c.addAuth(
+        []string{  },
+        req,
+    )
 
 
     resp, err := c.httpClient.Do(req)
@@ -369,7 +381,7 @@ func (c *Client) GetMaxItemId(request GetMaxitemJsonRequest) (int, error) {
 
     queryParams := targetUrl.Query()
     if request.Print != nil {
-        queryParams.Set("print", anyToString(*request.Print))
+        queryParams.Add("print", anyToString(*request.Print))
     }
     targetUrl.RawQuery = queryParams.Encode()
 
@@ -382,7 +394,10 @@ func (c *Client) GetMaxItemId(request GetMaxitemJsonRequest) (int, error) {
     if err != nil {
         return 0, err
     }
-
+    c.addAuth(
+        []string{  },
+        req,
+    )
 
 
     resp, err := c.httpClient.Do(req)
@@ -421,7 +436,7 @@ func (c *Client) GetNewStoryIds(request GetNewstoriesJsonRequest) ([]int, error)
 
     queryParams := targetUrl.Query()
     if request.Print != nil {
-        queryParams.Set("print", anyToString(*request.Print))
+        queryParams.Add("print", anyToString(*request.Print))
     }
     targetUrl.RawQuery = queryParams.Encode()
 
@@ -434,7 +449,10 @@ func (c *Client) GetNewStoryIds(request GetNewstoriesJsonRequest) ([]int, error)
     if err != nil {
         return []int{}, err
     }
-
+    c.addAuth(
+        []string{  },
+        req,
+    )
 
 
     resp, err := c.httpClient.Do(req)
@@ -473,7 +491,7 @@ func (c *Client) GetShowStoryIds(request GetShowstoriesJsonRequest) ([]int, erro
 
     queryParams := targetUrl.Query()
     if request.Print != nil {
-        queryParams.Set("print", anyToString(*request.Print))
+        queryParams.Add("print", anyToString(*request.Print))
     }
     targetUrl.RawQuery = queryParams.Encode()
 
@@ -486,7 +504,10 @@ func (c *Client) GetShowStoryIds(request GetShowstoriesJsonRequest) ([]int, erro
     if err != nil {
         return []int{}, err
     }
-
+    c.addAuth(
+        []string{  },
+        req,
+    )
 
 
     resp, err := c.httpClient.Do(req)
@@ -525,7 +546,7 @@ func (c *Client) GetTopStoryIds(request GetTopstoriesJsonRequest) ([]int, error)
 
     queryParams := targetUrl.Query()
     if request.Print != nil {
-        queryParams.Set("print", anyToString(*request.Print))
+        queryParams.Add("print", anyToString(*request.Print))
     }
     targetUrl.RawQuery = queryParams.Encode()
 
@@ -538,7 +559,10 @@ func (c *Client) GetTopStoryIds(request GetTopstoriesJsonRequest) ([]int, error)
     if err != nil {
         return []int{}, err
     }
-
+    c.addAuth(
+        []string{  },
+        req,
+    )
 
 
     resp, err := c.httpClient.Do(req)
@@ -564,20 +588,20 @@ func (c *Client) GetTopStoryIds(request GetTopstoriesJsonRequest) ([]int, error)
     }
     return castedBody, nil
 }
-func (c *Client) GetUpdates(request GetUpdatesJsonRequest) (GetUpdatesJSONResponse, error) {
+func (c *Client) GetUpdates(request GetUpdatesJsonRequest) (GetUpdatesJsonResponse, error) {
     rawUrl, err := url.JoinPath(c.baseUrl, "/updates.json")
     if err != nil {
-        return GetUpdatesJSONResponse{}, err
+        return GetUpdatesJsonResponse{}, err
     }
 
     targetUrl, err := url.Parse(rawUrl)
 	if err != nil {
-		return GetUpdatesJSONResponse{}, err
+		return GetUpdatesJsonResponse{}, err
 	}
 
     queryParams := targetUrl.Query()
     if request.Print != nil {
-        queryParams.Set("print", anyToString(*request.Print))
+        queryParams.Add("print", anyToString(*request.Print))
     }
     targetUrl.RawQuery = queryParams.Encode()
 
@@ -588,36 +612,39 @@ func (c *Client) GetUpdates(request GetUpdatesJsonRequest) (GetUpdatesJSONRespon
         nil,
     )
     if err != nil {
-        return GetUpdatesJSONResponse{}, err
+        return GetUpdatesJsonResponse{}, err
     }
-
+    c.addAuth(
+        []string{  },
+        req,
+    )
 
 
     resp, err := c.httpClient.Do(req)
     if err != nil {
-        return GetUpdatesJSONResponse{}, err
+        return GetUpdatesJsonResponse{}, err
     }
     defer resp.Body.Close()
 
     statusErr := errorForStatus(*req, *resp)
 	if statusErr != nil {
-		return GetUpdatesJSONResponse{}, statusErr
+		return GetUpdatesJsonResponse{}, statusErr
 	}
 
     body, err := io.ReadAll(resp.Body)
     if err != nil {
-        return GetUpdatesJSONResponse{}, err
+        return GetUpdatesJsonResponse{}, err
     }
 
-    var castedBody GetUpdatesJSONResponse
+    var castedBody GetUpdatesJsonResponse
     err = json.Unmarshal(body, &castedBody)
     if err != nil {
-        return GetUpdatesJSONResponse{}, err
+        return GetUpdatesJsonResponse{}, err
     }
     return castedBody, nil
 }
 func (c *Client) GetUser(request GetUserIdJsonRequest) (User, error) {
-    rawUrl, err := url.JoinPath(c.baseUrl, "/user/"+anyToString(request.ID)+".json")
+    rawUrl, err := url.JoinPath(c.baseUrl, "/user/"+anyToString(request.Id)+".json")
     if err != nil {
         return User{}, err
     }
@@ -629,7 +656,7 @@ func (c *Client) GetUser(request GetUserIdJsonRequest) (User, error) {
 
     queryParams := targetUrl.Query()
     if request.Print != nil {
-        queryParams.Set("print", anyToString(*request.Print))
+        queryParams.Add("print", anyToString(*request.Print))
     }
     targetUrl.RawQuery = queryParams.Encode()
 
@@ -642,7 +669,10 @@ func (c *Client) GetUser(request GetUserIdJsonRequest) (User, error) {
     if err != nil {
         return User{}, err
     }
-
+    c.addAuth(
+        []string{  },
+        req,
+    )
 
 
     resp, err := c.httpClient.Do(req)
